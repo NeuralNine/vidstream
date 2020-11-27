@@ -3,7 +3,7 @@ import socket
 import pickle
 import struct
 import threading
-import time
+
 
 class StreamingServer:
 
@@ -35,7 +35,7 @@ class StreamingServer:
             self.__block.acquire()
             connection, address = self.__server_socket.accept()
             self.__block.release()
-            thread = threading.Thread(target=self.__client_connection, args=(connection,address,))
+            thread = threading.Thread(target=self.__client_connection, args=(connection, address,))
             thread.start()
 
     def stop_server(self):
@@ -74,20 +74,23 @@ class StreamingServer:
                 connection.close()
                 break
 
+
 class CameraClient:
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, x_res=400, y_res=400):
 
         self.__host = host
         self.__port = port
-        self.__camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        self.__camera = cv2.VideoCapture(0)
         self.__configure()
+        self.__x_res = x_res
+        self.__y_res = y_res
         self.__running = False
         self.__client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def __configure(self):
-        self.__camera.set(3, 1000)
-        self.__camera.set(4, 1000)
+        self.__camera.set(3, self.__x_res)
+        self.__camera.set(4, self.__y_res)
         self.__encoding_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
 
     def __client_streaming(self):
@@ -104,6 +107,8 @@ class CameraClient:
                 self.__running = False
             except ConnectionAbortedError:
                 self.__running = False
+            except BrokenPipeError:
+                self.__running = False
 
         self.__camera.release()
         cv2.destroyAllWindows()
@@ -116,7 +121,8 @@ class CameraClient:
             client_thread = threading.Thread(target=self.__client_streaming)
             client_thread.start()
 
-class VideoClient(CameraClient):
+
+class VideoClient:
 
     def __init__(self, host, port, video, loop=True):
 
@@ -146,6 +152,8 @@ class VideoClient(CameraClient):
             except ConnectionResetError:
                 self.__running = False
             except ConnectionAbortedError:
+                self.__running = False
+            except BrokenPipeError:
                 self.__running = False
 
         self.__video.release()
