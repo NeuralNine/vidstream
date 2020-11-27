@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.0.6'
+VERSION = '0.0.7'
 DESCRIPTION = 'Streaming video data via networks'
 LONG_DESCRIPTION = 'A package that allows to build simple streams of video and camera data.'
 

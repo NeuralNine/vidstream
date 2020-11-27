@@ -82,9 +82,9 @@ class CameraClient:
         self.__host = host
         self.__port = port
         self.__camera = cv2.VideoCapture(0)
-        self.__configure()
         self.__x_res = x_res
         self.__y_res = y_res
+        self.__configure()
         self.__running = False
         self.__client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
