@@ -1,3 +1,3 @@
 # vidstream
 
-Under construction! Not ready for use yet!
+Under construction! Not ready for use yet! Currently experimenting and planning!
