@@ -1,14 +1,83 @@
+"""
+This module implements the main functionality of vidstream.
+
+Author: Florian Dedov from NeuralNine
+YouTube: https://www.youtube.com/c/NeuralNine
+"""
+
+__author__ = "Florian Dedov, NeuralNine"
+__email__ = "mail@neuralnine.com"
+__status__ = "planning"
+
 import cv2
+import pyautogui
 import numpy as np
+
 import socket
 import pickle
 import struct
 import threading
-import pyautogui
+
 
 class StreamingServer:
+    """
+    Class for the streaming server.
 
+    Attributes
+    ----------
+
+    Private:
+
+        __host : str
+            host address of the listening server
+        __port : int
+            port on which the server is listening
+        __slots : int
+            amount of maximum avaialable slots (not ready yet)
+        __used_slots : int
+            amount of used slots (not ready yet)
+        __quit_key : chr
+            key that has to be pressed to close connection
+        __running : bool
+            inicates if the server is already running or not
+        __block : Lock
+            a basic lock used for the synchronization of threads
+        __server_socket : socket
+            the main server socket
+
+
+    Methods
+    -------
+
+    Private:
+
+        __init_socket : method that binds the server socket to the host and port
+        __server_listening: method that listens for new connections
+        __client_connection : main method for processing the client streams
+
+    Public:
+
+        start_server : starts the server in a new thread
+        stop_server : stops the server and closes all connections
+    """
+
+    # TODO: Implement slots functionality
     def __init__(self, host, port, slots=8, quit_key='q'):
+        """
+        Creates a new instance of StreamingServer
+
+        Parameters
+        ----------
+
+        host : str
+            host address of the listening server
+        port : int
+            port on which the server is listening
+        slots : int
+            amount of avaialable slots (not ready yet) (default = 8)
+        quit_key : chr
+            key that has to be pressed to close connection (default = 'q')  
+        """
         self.__host = host
         self.__port = port
         self.__slots = slots
@@ -20,9 +89,15 @@ class StreamingServer:
         self.__init_socket()
 
     def __init_socket(self):
+        """
+        Binds the server socket to the given host and port
+        """
         self.__server_socket.bind((self.__host, self.__port))
 
     def start_server(self):
+        """
+        Starts the server if it is not running already.
+        """
         if self.__running:
             print("Server is already running")
         else:
@@ -31,6 +106,9 @@ class StreamingServer:
             server_thread.start()
 
     def __server_listening(self):
+        """
+        Listens for new connections.
+        """
         self.__server_socket.listen()
         while self.__running:
             self.__block.acquire()
@@ -40,6 +118,9 @@ class StreamingServer:
             thread.start()
 
     def stop_server(self):
+        """
+        Stops the server and closes all connections
+        """
         self.__running = False
         closing_connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         closing_connection.connect((self.__host, self.__port))
@@ -49,6 +130,9 @@ class StreamingServer:
         self.__block.release()
 
     def __client_connection(self, connection, address):
+        """
+        Handles the individual client connections and processes their stream data.
+        """
         payload_size = struct.calcsize('>L')
         data = b""
 
@@ -76,28 +160,93 @@ class StreamingServer:
                 break
 
 
-class CameraClient:
+class StreamingClient:
+    """
+    Abstract class for the generic streaming client.
 
-    def __init__(self, host, port, x_res=400, y_res=400):
+    Attributes
+    ----------
 
+    Private:
+
+        __host : str
+            host address to connect to
+        __port : int
+            port to connect to
+        __running : bool
+            inicates if the client is already streaming or not
+        __encoding_parameters : list
+            a list of encoding parameters for OpenCV
+        __client_socket : socket
+            the main client socket
+
+
+    Methods
+    -------
+
+    Private:
+
+        __client_streaming : main method for streaming the client data
+
+    Protected:
+
+        _configure : sets basic configurations (overridden by child classes)
+        _get_frame : returns the frame to be sent to the server (overridden by child classes)
+        _cleanup : cleans up all the resources and closes everything
+
+    Public:
+
+        start_stream : starts the client stream in a new thread
+    """
+
+    def __init__(self, host, port):
+        """
+        Creates a new instance of StreamingClient.
+
+        Parameters
+        ----------
+
+        host : str
+            host address to connect to
+        port : int
+            port to connect to
+        """
         self.__host = host
         self.__port = port
-        self.__camera = cv2.VideoCapture(0)
-        self.__x_res = x_res
-        self.__y_res = y_res
-        self.__configure()
+        self._configure()
         self.__running = False
         self.__client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    def __configure(self):
-        self.__camera.set(3, self.__x_res)
-        self.__camera.set(4, self.__y_res)
+    def _configure(self):
+        """
+        Basic configuration function.
+        """
         self.__encoding_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
 
+    def _get_frame(self):
+        """
+        Basic function for getting the next frame.
+
+        Returns
+        -------
+
+        frame : the next frame to be processed (default = None)
+        """
+        return None
+
+    def _cleanup(self):
+        """
+        Cleans up resources and closes everything.
+        """
+        cv2.destroyAllWindows()
+
     def __client_streaming(self):
+        """
+        Main method for streaming the client data.
+        """
         self.__client_socket.connect((self.__host, self.__port))
         while self.__running:
-            ret, frame = self.__camera.read()
+            frame = self._get_frame()
             result, frame = cv2.imencode('.jpg', frame, self.__encoding_parameters)
             data = pickle.dumps(frame, 0)
             size = len(data)
@@ -111,105 +260,267 @@ class CameraClient:
             except BrokenPipeError:
                 self.__running = False
 
+        self._cleanup()
+
+    # TODO: Implement stop_stream method
+    def start_stream(self):
+        """
+        Starts client stream if it is not already running.
+        """
+
+        if self.__running:
+            print("Client is already streaming!")
+        else:
+            self.__running = True
+            client_thread = threading.Thread(target=self.__client_streaming)
+            client_thread.start()
+
+
+class CameraClient(StreamingClient):
+    """
+    Class for the camera streaming client.
+
+    Attributes
+    ----------
+
+    Private:
+
+        __host : str
+            host address to connect to
+        __port : int
+            port to connect to
+        __running : bool
+            inicates if the client is already streaming or not
+        __encoding_parameters : list
+            a list of encoding parameters for OpenCV
+        __client_socket : socket
+            the main client socket
+        __camera : VideoCapture
+            the camera object
+        __x_res : int
+            the x resolution
+        __y_res : int
+            the y resolution
+
+
+    Methods
+    -------
+
+    Protected:
+
+        _configure : sets basic configurations
+        _get_frame : returns the camera frame to be sent to the server
+        _cleanup : cleans up all the resources and closes everything
+
+    Public:
+
+        start_stream : starts the camera stream in a new thread
+    """
+
+    def __init__(self, host, port, x_res=1024, y_res=576):
+        """
+        Creates a new instance of CameraClient.
+
+        Parameters
+        ----------
+
+        host : str
+            host address to connect to
+        port : int
+            port to connect to
+        x_res : int
+            the x resolution
+        y_res : int
+            the y resolution
+        """
+        self.__x_res = x_res
+        self.__y_res = y_res
+        self.__camera = cv2.VideoCapture(0)
+        super(CameraClient, self).__init__(host, port)
+
+    def _configure(self):
+        """
+        Sets the camera resultion and the encoding parameters.
+        """
+        self.__camera.set(3, self.__x_res)
+        self.__camera.set(4, self.__y_res)
+        super(CameraClient, self)._configure()
+
+    def _get_frame(self):
+        """
+        Gets the next camera frame.
+
+        Returns
+        -------
+
+        frame : the next camera frame to be processed
+        """
+        ret, frame = self.__camera.read()
+        return frame
+
+    def _cleanup(self):
+        """
+        Cleans up resources and closes everything.
+        """
         self.__camera.release()
         cv2.destroyAllWindows()
 
-    def start_stream(self):
-        if self.__running:
-            print("Client is already streaming!")
-        else:
-            self.__running = True
-            client_thread = threading.Thread(target=self.__client_streaming)
-            client_thread.start()
+
+class VideoClient(StreamingClient):
+    """
+    Class for the video streaming client.
+
+    Attributes
+    ----------
+
+    Private:
+
+        __host : str
+            host address to connect to
+        __port : int
+            port to connect to
+        __running : bool
+            inicates if the client is already streaming or not
+        __encoding_parameters : list
+            a list of encoding parameters for OpenCV
+        __client_socket : socket
+            the main client socket
+        __video : VideoCapture
+            the video object
+        __loop : bool
+            boolean that decides whether the video shall loop or not
 
 
-class VideoClient:
+    Methods
+    -------
+
+    Protected:
+
+        _configure : sets basic configurations
+        _get_frame : returns the video frame to be sent to the server
+        _cleanup : cleans up all the resources and closes everything
+
+    Public:
+
+        start_stream : starts the video stream in a new thread
+    """
 
     def __init__(self, host, port, video, loop=True):
+        """
+        Creates a new instance of VideoClient.
 
-        self.__host = host
-        self.__port = port
+        Parameters
+        ----------
+
+        host : str
+            host address to connect to
+        port : int
+            port to connect to
+        video : str
+            path to the video
+        loop : bool
+            indicates whether the video shall loop or not
+        """
         self.__video = cv2.VideoCapture(video)
-        self.__configure()
-        self.__running = False
-        self.__loop = True
-        self.__client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__loop = loop
+        super(VideoClient, self).__init__(host, port)
 
-    def __configure(self):
-        self.__video.set(3, 1000)
-        self.__video.set(4, 1000)
-        self.__encoding_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+    def _configure(self):
+        """
+        Set video resolution and encoding parameters.
+        """
+        self.__video.set(3, 1024)
+        self.__video.set(4, 576)
+        super(VideoClient, self)._configure()
 
-    def __client_streaming(self):
-        self.__client_socket.connect((self.__host, self.__port))
-        while self.__running:
-            ret, frame = self.__video.read()
-            result, frame = cv2.imencode('.jpg', frame, self.__encoding_parameters)
-            data = pickle.dumps(frame, 0)
-            size = len(data)
+    def _get_frame(self):
+        """
+        Gets the next video frame.
 
-            try:
-                self.__client_socket.sendall(struct.pack('>L', size) + data)
-            except ConnectionResetError:
-                self.__running = False
-            except ConnectionAbortedError:
-                self.__running = False
-            except BrokenPipeError:
-                self.__running = False
+        Returns
+        -------
 
+        frame : the next video frame to be processed
+        """
+        ret, frame = self.__video.read()
+        return frame
+
+    def _cleanup(self):
+        """
+        Cleans up resources and closes everything.
+        """
         self.__video.release()
         cv2.destroyAllWindows()
 
-    def start_stream(self):
-        if self.__running:
-            print("Client is already streaming!")
-        else:
-            self.__running = True
-            client_thread = threading.Thread(target=self.__client_streaming)
-            client_thread.start()
+
+class ScreenShareClient(StreamingClient):
+    """
+    Class for the screen share streaming client.
+
+    Attributes
+    ----------
+
+    Private:
+
+        __host : str
+            host address to connect to
+        __port : int
+            port to connect to
+        __running : bool
+            inicates if the client is already streaming or not
+        __encoding_parameters : list
+            a list of encoding parameters for OpenCV
+        __client_socket : socket
+            the main client socket
+        __x_res : int
+            the x resolution
+        __y_res : int
+            the y resolution
 
 
-class ScreenShareClient:
+    Methods
+    -------
+
+    Protected:
+
+        _get_frame : returns the screenshot frame to be sent to the server
+
+    Public:
+
+        start_stream : starts the screen sharing stream in a new thread
+    """
 
     def __init__(self, host, port, x_res=1024, y_res=576):
+        """
+        Creates a new instance of ScreenShareClient.
 
-        self.__host = host
-        self.__port = port
+        Parameters
+        ----------
+
+        host : str
+            host address to connect to
+        port : int
+            port to connect to
+        x_res : int
+            the x resolution
+        y_res : int
+            the y resolution
+        """
         self.__x_res = x_res
         self.__y_res = y_res
-        self.__configure()
-        self.__running = False
-        self.__client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        super(ScreenShareClient, self).__init__(host, port)
 
-    def __configure(self):
-        self.__encoding_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+    def _get_frame(self):
+        """
+        Gets the next screenshot.
 
-    def __client_streaming(self):
-        self.__client_socket.connect((self.__host, self.__port))
-        while self.__running:
-            img = pyautogui.screenshot()
-            frame = np.array(img)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = cv2.resize(frame, (self.__x_res, self.__y_res), interpolation=cv2.INTER_AREA)
-            result, frame = cv2.imencode('.jpg', frame, self.__encoding_parameters)
-            data = pickle.dumps(frame, 0)
-            size = len(data)
+        Returns
+        -------
 
-            try:
-                self.__client_socket.sendall(struct.pack('>L', size) + data)
-            except ConnectionResetError:
-                self.__running = False
-            except ConnectionAbortedError:
-                self.__running = False
-            except BrokenPipeError:
-                self.__running = False
-
-        cv2.destroyAllWindows()
-
-    def start_stream(self):
-        if self.__running:
-            print("Client is already streaming!")
-        else:
-            self.__running = True
-            client_thread = threading.Thread(target=self.__client_streaming)
-            client_thread.start()
+        frame : the next screenshot frame to be processed
+        """
+        screen = pyautogui.screenshot()
+        frame = np.array(screen)
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = cv2.resize(frame, (self.__x_res, self.__y_res), interpolation=cv2.INTER_AREA)
+        return frame
