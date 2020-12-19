@@ -1,9 +1,10 @@
 import cv2
+import numpy as np
 import socket
 import pickle
 import struct
 import threading
-
+import pyautogui
 
 class StreamingServer:
 
@@ -157,6 +158,52 @@ class VideoClient:
                 self.__running = False
 
         self.__video.release()
+        cv2.destroyAllWindows()
+
+    def start_stream(self):
+        if self.__running:
+            print("Client is already streaming!")
+        else:
+            self.__running = True
+            client_thread = threading.Thread(target=self.__client_streaming)
+            client_thread.start()
+
+
+class ScreenShareClient:
+
+    def __init__(self, host, port, x_res=1024, y_res=576):
+
+        self.__host = host
+        self.__port = port
+        self.__x_res = x_res
+        self.__y_res = y_res
+        self.__configure()
+        self.__running = False
+        self.__client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    def __configure(self):
+        self.__encoding_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+
+    def __client_streaming(self):
+        self.__client_socket.connect((self.__host, self.__port))
+        while self.__running:
+            img = pyautogui.screenshot()
+            frame = np.array(img)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = cv2.resize(frame, (self.__x_res, self.__y_res), interpolation=cv2.INTER_AREA)
+            result, frame = cv2.imencode('.jpg', frame, self.__encoding_parameters)
+            data = pickle.dumps(frame, 0)
+            size = len(data)
+
+            try:
+                self.__client_socket.sendall(struct.pack('>L', size) + data)
+            except ConnectionResetError:
+                self.__running = False
+            except ConnectionAbortedError:
+                self.__running = False
+            except BrokenPipeError:
+                self.__running = False
+
         cv2.destroyAllWindows()
 
     def start_stream(self):
