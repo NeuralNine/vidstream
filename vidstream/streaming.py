@@ -121,13 +121,16 @@ class StreamingServer:
         """
         Stops the server and closes all connections
         """
-        self.__running = False
-        closing_connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        closing_connection.connect((self.__host, self.__port))
-        closing_connection.close()
-        self.__block.acquire()
-        self.__server_socket.close()
-        self.__block.release()
+        if self.__running:
+            self.__running = False
+            closing_connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            closing_connection.connect((self.__host, self.__port))
+            closing_connection.close()
+            self.__block.acquire()
+            self.__server_socket.close()
+            self.__block.release()
+        else:
+            print("Server not running!")
 
     def __client_connection(self, connection, address):
         """
@@ -138,8 +141,18 @@ class StreamingServer:
 
         while self.__running:
 
+            break_loop = False
+
             while len(data) < payload_size:
-                data += connection.recv(4096)
+                received = connection.recv(4096)
+                if received == b'':
+                    connection.close()
+                    break_loop = True
+                    break
+                data += received
+
+            if break_loop:
+                break
 
             packed_msg_size = data[:payload_size]
             data = data[payload_size:]
@@ -274,6 +287,15 @@ class StreamingClient:
             self.__running = True
             client_thread = threading.Thread(target=self.__client_streaming)
             client_thread.start()
+
+    def stop_stream(self):
+        """
+        Stops client stream if running
+        """
+        if self.__running:
+            self.__running = False
+        else:
+            print("Client not streaming!")
 
 
 class CameraClient(StreamingClient):
