@@ -113,6 +113,13 @@ class StreamingServer:
         while self.__running:
             self.__block.acquire()
             connection, address = self.__server_socket.accept()
+            if self.__used_slots >= self.__slots:
+                print("Connection refused! No free slots!")
+                connection.close()
+                self.__block.release()
+                continue
+            else:
+                self.__used_slots += 1
             self.__block.release()
             thread = threading.Thread(target=self.__client_connection, args=(connection, address,))
             thread.start()
@@ -147,6 +154,7 @@ class StreamingServer:
                 received = connection.recv(4096)
                 if received == b'':
                     connection.close()
+                    self.__used_slots -= 1
                     break_loop = True
                     break
                 data += received
@@ -170,6 +178,7 @@ class StreamingServer:
             cv2.imshow(str(address), frame)
             if cv2.waitKey(1) == ord(self.__quit_key):
                 connection.close()
+                self.__used_slots -= 1
                 break
 
 
@@ -275,7 +284,6 @@ class StreamingClient:
 
         self._cleanup()
 
-    # TODO: Implement stop_stream method
     def start_stream(self):
         """
         Starts client stream if it is not already running.
