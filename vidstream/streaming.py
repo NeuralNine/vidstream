@@ -17,7 +17,13 @@ import socket
 import pickle
 import struct
 import threading
+from ffpyplayer.player import MediaPlayer
+from vidstream.exceptions import VidStreamError
 
+
+CAMERA_STREAM = 1
+VIDEO_STREAM = 2
+SCREEN_SHARE_STREAM = 3
 
 class StreamingServer:
     """
@@ -93,7 +99,7 @@ class StreamingServer:
         Binds the server socket to the given host and port
         """
         self.__server_socket.bind((self.__host, self.__port))
-
+    
     def start_server(self):
         """
         Starts the server if it is not running already.
@@ -107,7 +113,7 @@ class StreamingServer:
 
     def __server_listening(self):
         """
-        Listens for new connections.
+        Listens for and accepts new connections.
         """
         self.__server_socket.listen()
         while self.__running:
@@ -133,9 +139,9 @@ class StreamingServer:
             closing_connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             closing_connection.connect((self.__host, self.__port))
             closing_connection.close()
-            self.__block.acquire()
-            self.__server_socket.close()
-            self.__block.release()
+            with self.__block:
+                self.__server_socket.close()
+
         else:
             print("Server not running!")
 
@@ -235,15 +241,16 @@ class StreamingClient:
         """
         self.__host = host
         self.__port = port
-        self._configure()
         self.__running = False
+        self._capture = None
+        self.__encoding_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
         self.__client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def _configure(self):
         """
         Basic configuration function.
         """
-        self.__encoding_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+        pass
 
     def _get_frame(self):
         """
@@ -252,14 +259,17 @@ class StreamingClient:
         Returns
         -------
 
+        flag : flag denoting the source of the frame(default = None)
         frame : the next frame to be processed (default = None)
         """
-        return None
+        return None, None
 
     def _cleanup(self):
         """
         Cleans up resources and closes everything.
         """
+        if isinstance(self._capture, cv2.VideoCapture):
+            self._capture.release()
         cv2.destroyAllWindows()
 
     def __client_streaming(self):
@@ -267,20 +277,37 @@ class StreamingClient:
         Main method for streaming the client data.
         """
         self.__client_socket.connect((self.__host, self.__port))
+        tracker = 0
         while self.__running:
-            frame = self._get_frame()
-            result, frame = cv2.imencode('.jpg', frame, self.__encoding_parameters)
-            data = pickle.dumps(frame, 0)
-            size = len(data)
+            source, frame = self._get_frame()
+            if frame is not None:
+                tracker = 1
+                if source == CAMERA_STREAM:
+                    frame = cv2.flip(frame, 1)
+                    height = frame.shape[0]
+                    width = frame.shape[1]
+                    cv2.circle(frame, (80, height-50), 20, (0, 0, 255), -1)
+                    cv2.circle(frame, (80, height-50), 24, (255, 255, 255), 2)
+                    cv2.putText(frame, 'Live', (115, height-37), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 2)
+                result, frame = cv2.imencode('.jpg', frame, self.__encoding_parameters)
+                data = pickle.dumps(frame, 0)
+                size = len(data)
 
-            try:
-                self.__client_socket.sendall(struct.pack('>L', size) + data)
-            except ConnectionResetError:
-                self.__running = False
-            except ConnectionAbortedError:
-                self.__running = False
-            except BrokenPipeError:
-                self.__running = False
+                try:
+                    self.__client_socket.sendall(struct.pack('>L', size) + data)
+                except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+                    # All caught in the same except clause to shorten code
+                    self.__running = False
+            else:
+                # raise a friendly exception
+                if tracker == 0:
+                    # No initial frame was read
+                    self.__running = False
+                    self._cleanup()
+                    raise VidStreamError('''Check that your camera is connected properly if using external camera or check that the correct index is given. If videostreaming, you might want to provide a video of supported type''')
+                else:
+                    # The video (feed) is over and there are no more frames to read
+                    self._cleanup()
 
         self._cleanup()
 
@@ -320,18 +347,21 @@ class CameraClient(StreamingClient):
         __port : int
             port to connect to
         __running : bool
-            inicates if the client is already streaming or not
+            indicates if the client is already streaming or not
         __encoding_parameters : list
             a list of encoding parameters for OpenCV
         __client_socket : socket
             the main client socket
-        __camera : VideoCapture
-            the camera object
+        __cam_index : int
+            the index of the camera to use
         __x_res : int
             the x resolution
         __y_res : int
             the y resolution
 
+    Protected:
+    _capture : VideoCapture
+        the camera object
 
     Methods
     -------
@@ -347,7 +377,7 @@ class CameraClient(StreamingClient):
         start_stream : starts the camera stream in a new thread
     """
 
-    def __init__(self, host, port, x_res=1024, y_res=576):
+    def __init__(self, host, port, cam_index=0, x_res=1024, y_res=576):
         """
         Creates a new instance of CameraClient.
 
@@ -362,18 +392,22 @@ class CameraClient(StreamingClient):
             the x resolution
         y_res : int
             the y resolution
+        cam_index : int
+            index of the camera to use
         """
+        super(CameraClient, self).__init__(host, port)
         self.__x_res = x_res
         self.__y_res = y_res
-        self.__camera = cv2.VideoCapture(0)
-        super(CameraClient, self).__init__(host, port)
+        self.__cam_index = cam_index
+        self._capture = cv2.VideoCapture(self.__cam_index)
+        self._configure()
 
     def _configure(self):
         """
-        Sets the camera resultion and the encoding parameters.
+        Sets the camera resolution and the encoding parameters.
         """
-        self.__camera.set(3, self.__x_res)
-        self.__camera.set(4, self.__y_res)
+        self._capture.set(3, self.__x_res)
+        self._capture.set(4, self.__y_res)
         super(CameraClient, self)._configure()
 
     def _get_frame(self):
@@ -383,17 +417,12 @@ class CameraClient(StreamingClient):
         Returns
         -------
 
+        flag : flag denoting the source of the frame
         frame : the next camera frame to be processed
         """
-        ret, frame = self.__camera.read()
-        return frame
+        ret, frame = self._capture.read()
+        return CAMERA_STREAM, frame
 
-    def _cleanup(self):
-        """
-        Cleans up resources and closes everything.
-        """
-        self.__camera.release()
-        cv2.destroyAllWindows()
 
 
 class VideoClient(StreamingClient):
@@ -410,16 +439,17 @@ class VideoClient(StreamingClient):
         __port : int
             port to connect to
         __running : bool
-            inicates if the client is already streaming or not
+            indicates if the client is already streaming or not
         __encoding_parameters : list
             a list of encoding parameters for OpenCV
         __client_socket : socket
             the main client socket
-        __video : VideoCapture
-            the video object
         __loop : bool
             boolean that decides whether the video shall loop or not
 
+    Protected:
+        _capture : VideoCapture
+            the video object
 
     Methods
     -------
@@ -451,16 +481,18 @@ class VideoClient(StreamingClient):
         loop : bool
             indicates whether the video shall loop or not
         """
-        self.__video = cv2.VideoCapture(video)
-        self.__loop = loop
         super(VideoClient, self).__init__(host, port)
+        self._capture = cv2.VideoCapture(video)
+        self.__player = MediaPlayer(video)
+        self.__loop = loop
+        self._configure()
 
     def _configure(self):
         """
         Set video resolution and encoding parameters.
         """
-        self.__video.set(3, 1024)
-        self.__video.set(4, 576)
+        self._capture.set(3, 1024)
+        self._capture.set(4, 576)
         super(VideoClient, self)._configure()
 
     def _get_frame(self):
@@ -470,17 +502,12 @@ class VideoClient(StreamingClient):
         Returns
         -------
 
+        flag : flag denoting the source of the frame
         frame : the next video frame to be processed
         """
-        ret, frame = self.__video.read()
-        return frame
-
-    def _cleanup(self):
-        """
-        Cleans up resources and closes everything.
-        """
-        self.__video.release()
-        cv2.destroyAllWindows()
+        ret, frame = self._capture.read()
+        audio_frame, val = self.__player.get_frame()
+        return VIDEO_STREAM, frame
 
 
 class ScreenShareClient(StreamingClient):
@@ -497,7 +524,7 @@ class ScreenShareClient(StreamingClient):
         __port : int
             port to connect to
         __running : bool
-            inicates if the client is already streaming or not
+            indicates if the client is already streaming or not
         __encoding_parameters : list
             a list of encoding parameters for OpenCV
         __client_socket : socket
@@ -538,6 +565,7 @@ class ScreenShareClient(StreamingClient):
         """
         self.__x_res = x_res
         self.__y_res = y_res
+        self._configure()
         super(ScreenShareClient, self).__init__(host, port)
 
     def _get_frame(self):
@@ -547,10 +575,12 @@ class ScreenShareClient(StreamingClient):
         Returns
         -------
 
+        flag : flag denoting the source of the frame
         frame : the next screenshot frame to be processed
+
         """
         screen = pyautogui.screenshot()
         frame = np.array(screen)
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame = cv2.resize(frame, (self.__x_res, self.__y_res), interpolation=cv2.INTER_AREA)
-        return frame
+        return SCREEN_SHARE_STREAM, frame
