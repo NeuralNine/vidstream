@@ -1,0 +1,2 @@
+class VidStreamError(Exception):
+    pass
