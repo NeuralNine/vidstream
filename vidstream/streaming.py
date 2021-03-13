@@ -304,7 +304,8 @@ class StreamingClient:
                     # No initial frame was read
                     self.__running = False
                     self._cleanup()
-                    raise VidStreamError('''Check that your camera is connected properly if using external camera or check that the correct index is given. If videostreaming, you might want to provide a video of supported type''')
+                    raise VidStreamError('''Check that your camera is connected properly if using external camera or check that the correct index is given. If videostreaming, you might want to provide a video of supported type.
+					 Also check that the camera you intend to use is not in use elsewhere.''')
                 else:
                     # The video (feed) is over and there are no more frames to read
                     self._cleanup()
