@@ -7,9 +7,9 @@ here = os.path.abspath(os.path.dirname(__file__))
 with codecs.open(os.path.join(here, "README.md"), encoding="utf-8") as fh:
     long_description = "\n" + fh.read()
 
-VERSION = '0.0.9'
+VERSION = '0.0.13'
 DESCRIPTION = 'Streaming video data via networks'
-LONG_DESCRIPTION = 'A package that allows to build simple streams of video and camera data.'
+LONG_DESCRIPTION = 'A package that allows to build simple streams of video, audio and camera data.'
 
 # Setting up
 setup(
@@ -21,7 +21,7 @@ setup(
     long_description_content_type="text/markdown",
     long_description=long_description,
     packages=find_packages(),
-    install_requires=['opencv-python', 'pyautogui'],
+    install_requires=['opencv-python', 'pyautogui', 'pyaudio'],
     keywords=['python', 'video', 'stream', 'video stream', 'camera stream', 'sockets'],
     classifiers=[
         "Development Status :: 1 - Planning",
