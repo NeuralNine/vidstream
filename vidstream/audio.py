@@ -19,33 +19,40 @@ class AudioSender:
 
         self.__running = False
 
-    def __callback(self, in_data, frame_count, time_info, status):
-        if self.__running:
-            self.__sending_socket.send(in_data)
-            return (None, pyaudio.paContinue)
-        else:
-            try:
-                self.__stream.stop_stream()
-                self.__stream.close()
-                self.__audio.terminate()
-                self.__sending_socket.close()
-            except OSError:
-                pass # Dirty Solution For Now (Read Overflow)
-            return (None, pyaudio.paComplete)
+    #
+    # def __callback(self, in_data, frame_count, time_info, status):
+    #     if self.__running:
+    #         self.__sending_socket.send(in_data)
+    #         return (None, pyaudio.paContinue)
+    #     else:
+    #         try:
+    #             self.__stream.stop_stream()
+    #             self.__stream.close()
+    #             self.__audio.terminate()
+    #             self.__sending_socket.close()
+    #         except OSError:
+    #             pass # Dirty Solution For Now (Read Overflow)
+    #         return (None, pyaudio.paComplete)
 
     def start_stream(self):
         if self.__running:
             print("Already streaming")
         else:
             self.__running = True
-            self.__sending_socket.connect((self.__host, self.__port))
-            self.__stream = self.__audio.open(format=self.__audio_format, channels=self.__channels, rate=self.__rate, input=True, frames_per_buffer=self.__frame_chunk, stream_callback=self.__callback)
+            thread = threading.Thread(target=self.__client_streaming)
+            thread.start()
 
     def stop_stream(self):
         if self.__running:
             self.__running = False
         else:
             print("Client not streaming")
+
+    def __client_streaming(self):
+        self.__sending_socket.connect((self.__host, self.__port))
+        self.__stream = self.__audio.open(format=self.__audio_format, channels=self.__channels, rate=self.__rate, input=True, frames_per_buffer=self.__frame_chunk)
+        while self.__running:
+            self.__sending_socket.send(self.__stream.read(self.__frame_chunk))
 
 
 class AudioReceiver:
