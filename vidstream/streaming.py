@@ -9,14 +9,8 @@ __author__ = "Florian Dedov, NeuralNine"
 __email__ = "mail@neuralnine.com"
 __status__ = "planning"
 
-import cv2
-import pyautogui
+import cv2, pyautogui, socket, pickle, struct, threading
 import numpy as np
-
-import socket
-import pickle
-import struct
-import threading
 
 
 class StreamingServer:
@@ -62,7 +56,7 @@ class StreamingServer:
     """
 
     # TODO: Implement slots functionality
-    def __init__(self, host, port, slots=8, quit_key='q'):
+    def __init__(self, host, port, slots=8, quit_key='esc'):
         """
         Creates a new instance of StreamingServer
 
@@ -99,7 +93,7 @@ class StreamingServer:
         Starts the server if it is not running already.
         """
         if self.__running:
-            print("Server is already running")
+            print("The server is already running")
         else:
             self.__running = True
             server_thread = threading.Thread(target=self.__server_listening)
