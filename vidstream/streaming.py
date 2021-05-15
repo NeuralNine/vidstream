@@ -22,7 +22,6 @@ import threading
 class StreamingServer:
     """
     Class for the streaming server.
-
     Attributes
     ----------
 
@@ -347,7 +346,7 @@ class CameraClient(StreamingClient):
         start_stream : starts the camera stream in a new thread
     """
 
-    def __init__(self, host, port, x_res=1024, y_res=576):
+    def __init__(self, host, port, x_res=1024, y_res=576, cam_no=0):
         """
         Creates a new instance of CameraClient.
 
@@ -365,7 +364,7 @@ class CameraClient(StreamingClient):
         """
         self.__x_res = x_res
         self.__y_res = y_res
-        self.__camera = cv2.VideoCapture(0)
+        self.__camera = cv2.VideoCapture(cam_no)
         super(CameraClient, self).__init__(host, port)
 
     def _configure(self):
