@@ -304,6 +304,14 @@ class StreamingClient:
             self.__running = False
         else:
             print("Client not streaming!")
+        
+    def __enter__(self)-> 'StreamingServer':
+        self.start_stream()
+        return self
+    
+    def __exit__(self, exc, val, tb)-> None:
+        """"Context manager" used just for cleanup resources"""
+        self.stop_stream()
 
 
 class CameraClient(StreamingClient):
