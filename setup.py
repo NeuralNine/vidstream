@@ -19,7 +19,7 @@ setup(
     author_email="<mail@neuralnine.com>",
     description=DESCRIPTION,
     long_description_content_type="text/markdown",
-    long_description=long_description,
+    long_description=LONG_DESCRIPTION,
     packages=find_packages(),
     install_requires=['opencv-python', 'pyautogui', 'pyaudio'],
     keywords=['python', 'video', 'stream', 'video stream', 'camera stream', 'sockets'],
